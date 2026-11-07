@@ -305,11 +305,8 @@
       </div>
       </div>
 
-      <form class="card" id="contact-form" action="https://formsubmit.co/info@ctcl.tech" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="_subject" value="New website inquiry – ctcl.tech">
-        <input type="hidden" name="_template" value="table">
-        <input type="hidden" name="_next" value="https://ctcl.tech/thanks.html">
-        <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <form class="card" id="contact-form" novalidate>
+        <input type="text" id="website" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
 
         <div class="row">
           <div class="field"><label for="name">Full name</label><input id="name" name="Name" required autocomplete="name"></div>
@@ -338,6 +335,7 @@
           </label>
           <div class="err" id="file-err">Please choose a PDF, DOC or DOCX file under 5 MB.</div>
         </div>
+        <div class="err" id="form-err" style="margin-bottom:10px"></div>
         <button type="submit" class="btn btn-primary" id="submit-btn">Send message →</button>
         <p class="fine">Your information is used only to respond to your inquiry.</p>
       </form>
@@ -372,9 +370,50 @@
     fileLabel.innerHTML = f ? '<b>' + f.name.replace(/</g,'&lt;') + '</b> · ' + (f.size/1024/1024).toFixed(1) + ' MB' : '<b>Choose a file</b> · PDF, DOC or DOCX, up to 5 MB';
     fileErr.style.display = okFile(f) ? 'none' : 'block';
   });
-  document.getElementById('contact-form').addEventListener('submit', e => {
-    if (!okFile(fileInput.files[0])) { e.preventDefault(); fileErr.style.display = 'block'; return; }
-    const b = document.getElementById('submit-btn'); b.textContent = 'Sending…'; b.style.opacity = .7;
+  // ===== Contact form → Google Apps Script (emails info@ctcl.tech) =====
+  // Paste your Apps Script Web App URL (ends with /exec) between the quotes:
+  const FORM_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyNK1TCadmgtC94vz4O4nd6sX37sloUidEaxoazSTr4mvG0Tikb0DL7j5safChUVXSA/exec';
+
+  const form = document.getElementById('contact-form');
+  const formErr = document.getElementById('form-err');
+  const btn = document.getElementById('submit-btn');
+  const val = id => document.getElementById(id).value.trim();
+  const showErr = msg => { formErr.textContent = msg; formErr.style.display = msg ? 'block' : 'none'; };
+  const toBase64 = f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('Could not read the file.'));
+    r.readAsDataURL(f);
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    showErr('');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    const f = fileInput.files[0];
+    if (!okFile(f)) { fileErr.style.display = 'block'; return; }
+
+    btn.disabled = true; btn.textContent = 'Sending…'; btn.style.opacity = .7;
+    try {
+      const payload = {
+        name: val('name'), email: val('email'), phone: val('phone'), company: val('company'),
+        type: val('type'), message: val('message'), website: val('website'),
+        page: location.href
+      };
+      if (f) payload.file = { name: f.name, type: f.type || 'application/octet-stream', data: await toBase64(f) };
+
+      const res = await fetch(FORM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'Submission failed');
+      window.location.href = 'thanks.html';
+    } catch (err) {
+      showErr('Sorry, your message could not be sent. Please try again, or email us directly at info@ctcl.tech.');
+      btn.disabled = false; btn.textContent = 'Send message →'; btn.style.opacity = 1;
+    }
   });
 </script>
 </body>
